@@ -20,12 +20,10 @@ type Stack struct {
 }
 
 // Result holds the full detection outcome for a project directory.
-// Stacks are sorted by Language so output is deterministic regardless of
-// filesystem directory-entry order or map iteration order.
 type Result struct {
 	Root       string
 	Stacks     []Stack
-	PrimaryIdx int // index of the "primary" stack (first after sort, or 0)
+	PrimaryIdx int
 }
 
 // Primary returns the primary detected stack, or the zero value if none.
@@ -36,9 +34,84 @@ func (r *Result) Primary() (Stack, bool) {
 	return r.Stacks[r.PrimaryIdx], true
 }
 
+// SubProjectResult is one detected sub-project found during a monorepo walk.
+type SubProjectResult struct {
+	Path   string // relative path from scan root; "." means the root itself
+	Stacks []Stack
+}
+
+// monorepoSkipDirs lists directory names that DetectAll will never descend into.
+var monorepoSkipDirs = map[string]bool{
+	"node_modules": true,
+	"vendor":       true,
+	".git":         true,
+	"dist":         true,
+	"build":        true,
+	".next":        true,
+	"target":       true,
+	"__pycache__":  true,
+	"venv":         true,
+	".venv":        true,
+}
+
+// DetectAll walks root up to maxDepth directory levels, finds every
+// sub-directory that contains at least one recognised manifest, and returns
+// one SubProjectResult per such directory. Results are sorted by Path.
+// When maxDepth == 0 DetectAll behaves like Detect (root only).
+func DetectAll(root string, maxDepth int) ([]SubProjectResult, error) {
+	var results []SubProjectResult
+	err := walkDetect(root, root, 0, maxDepth, &results)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Path < results[j].Path
+	})
+	return results, nil
+}
+
+func walkDetect(scanRoot, dir string, depth, maxDepth int, results *[]SubProjectResult) error {
+	res, err := Detect(dir)
+	if err != nil {
+		return err
+	}
+
+	rel, err := filepath.Rel(scanRoot, dir)
+	if err != nil {
+		rel = dir
+	}
+	if rel == "" {
+		rel = "."
+	}
+
+	if len(res.Stacks) > 0 {
+		*results = append(*results, SubProjectResult{Path: rel, Stacks: res.Stacks})
+	}
+
+	if depth >= maxDepth {
+		return nil
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil // skip unreadable directories silently
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if monorepoSkipDirs[name] || strings.HasPrefix(name, ".") {
+			continue
+		}
+		if err := walkDetect(scanRoot, filepath.Join(dir, name), depth+1, maxDepth, results); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Detect analyzes the directory at root and returns the detected stacks.
-// It never panics; individual manifest parse failures downgrade to bare
-// language detection without framework identification.
 func Detect(root string) (*Result, error) {
 	type probe struct {
 		filename string
@@ -72,7 +145,6 @@ func Detect(root string) (*Result, error) {
 		stacks = append(stacks, s)
 	}
 
-	// Deterministic order: sort by Language name.
 	sort.Slice(stacks, func(i, j int) bool {
 		return stacks[i].Language < stacks[j].Language
 	})
@@ -80,7 +152,7 @@ func Detect(root string) (*Result, error) {
 	return &Result{Root: root, Stacks: stacks, PrimaryIdx: 0}, nil
 }
 
-// ─── per-ecosystem probes ───────────────────────────────────────────────────
+// ─── per-ecosystem probes ────────────────────────────────────────────────────
 
 func probeNode(root, fp string) Stack {
 	s := Stack{Language: "node"}
@@ -129,13 +201,11 @@ func probeNode(root, fp string) Stack {
 
 func probePHP(root, fp string) Stack {
 	s := Stack{Language: "php"}
-	// Laravel: artisan file in the same directory as composer.json
 	artisan := filepath.Join(root, "artisan")
 	if _, err := os.Stat(artisan); err == nil {
 		s.Framework = "laravel"
 		return s
 	}
-	// Check composer.json require section
 	data, err := os.ReadFile(fp)
 	if err != nil {
 		return s
@@ -154,13 +224,8 @@ func probePHP(root, fp string) Stack {
 	return s
 }
 
-func probeGo(_, fp string) Stack {
-	return Stack{Language: "go"}
-}
-
-func probeRust(_, fp string) Stack {
-	return Stack{Language: "rust"}
-}
+func probeGo(_, fp string) Stack   { return Stack{Language: "go"} }
+func probeRust(_, fp string) Stack { return Stack{Language: "rust"} }
 
 func probePyproject(root, fp string) Stack {
 	s := Stack{Language: "python"}
@@ -216,20 +281,16 @@ func probePipfile(root, fp string) Stack {
 	return s
 }
 
-// containsLine reports whether content has a line beginning (after trimming)
-// with the given prefix, case-insensitively. Used for requirements.txt parsing.
 func containsLine(content, prefix string) bool {
 	for _, line := range strings.Split(content, "\n") {
-		t := strings.TrimSpace(line)
-		if strings.HasPrefix(t, prefix) {
+		if strings.HasPrefix(strings.TrimSpace(line), prefix) {
 			return true
 		}
 	}
 	return false
 }
 
-// IsBinary reports whether data looks like a binary (non-text) file by
-// checking for null bytes in the first 512 bytes.
+// IsBinary reports whether data looks like a binary file.
 func IsBinary(data []byte) bool {
 	check := data
 	if len(check) > 512 {

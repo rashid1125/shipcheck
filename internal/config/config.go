@@ -5,22 +5,25 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/rashid1125/launchsafe/internal/finding"
+	"github.com/rashid1125/shipcheck/internal/finding"
 )
 
-// DefaultConfigFile is the filename looked up automatically in the project root.
-const DefaultConfigFile = ".launchsafe.json"
+// DefaultConfigFile is the primary config filename looked up in the project root.
+const DefaultConfigFile = ".shipcheck.json"
+
+// DeprecatedConfigFile is the old config filename; still read as a fallback.
+const DeprecatedConfigFile = ".launchsafe.json"
 
 // Config holds user-configurable rule settings.
 type Config struct {
 	DisabledRules     []string          `json:"disabled_rules"`
 	SeverityOverrides map[string]string `json:"severity_overrides"`
+	IgnorePaths       []string          `json:"ignore_paths"`
 }
 
 // Default returns a configuration with no overrides.
 func Default() *Config {
 	return &Config{
-		DisabledRules:     nil,
 		SeverityOverrides: make(map[string]string),
 	}
 }
@@ -70,4 +73,14 @@ func (c *Config) Apply(f finding.Finding) finding.Finding {
 		f.Severity = sev
 	}
 	return f
+}
+
+// IsIgnoredPath reports whether the given relative path is covered by ignore_paths.
+func (c *Config) IsIgnoredPath(relPath string) bool {
+	for _, prefix := range c.IgnorePaths {
+		if relPath == prefix || len(relPath) > len(prefix) && relPath[:len(prefix)] == prefix {
+			return true
+		}
+	}
+	return false
 }

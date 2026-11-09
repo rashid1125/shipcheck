@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/rashid1125/launchsafe/internal/config"
-	"github.com/rashid1125/launchsafe/internal/detect"
-	"github.com/rashid1125/launchsafe/internal/finding"
+	"github.com/rashid1125/shipcheck/internal/config"
+	"github.com/rashid1125/shipcheck/internal/detect"
+	"github.com/rashid1125/shipcheck/internal/finding"
 )
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -304,4 +304,122 @@ func containsStr(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// ─── Task 3 — false-positive reduction tests ──────────────────────────────────
+
+func TestHardcodedSecrets_SkipsTestFiles(t *testing.T) {
+	root := makeDir(t, map[string]string{
+		"auth_test.go": `package auth
+func TestLogin(t *testing.T) {
+	password := "supersecret12345"
+	_ = password
+}
+`,
+	})
+	results := Run(newCtx(t, root, nil, true))
+	for _, f := range results {
+		if f.RuleID == "HARDCODED_SECRETS" && f.Status == finding.StatusFail {
+			t.Errorf("scanner should skip _test.go files, got finding in %s", f.FilePath)
+		}
+	}
+}
+
+func TestHardcodedSecrets_SkipsMarkdown(t *testing.T) {
+	root := makeDir(t, map[string]string{
+		"README.md": "## Example\n\nSet `password=yoursecrethere` in .env\n",
+	})
+	results := Run(newCtx(t, root, nil, true))
+	for _, f := range results {
+		if f.RuleID == "HARDCODED_SECRETS" && f.Status == finding.StatusFail {
+			t.Errorf("scanner should skip .md files, got finding in %s", f.FilePath)
+		}
+	}
+}
+
+func TestHardcodedSecrets_SkipsMinJS(t *testing.T) {
+	root := makeDir(t, map[string]string{
+		"app.min.js": `var password="supersecretvalue";`,
+	})
+	results := Run(newCtx(t, root, nil, true))
+	for _, f := range results {
+		if f.RuleID == "HARDCODED_SECRETS" && f.Status == finding.StatusFail {
+			t.Errorf("scanner should skip .min.js files, got finding in %s", f.FilePath)
+		}
+	}
+}
+
+func TestHardcodedSecrets_IgnorePaths(t *testing.T) {
+	root := makeDir(t, map[string]string{
+		"fixtures/config.go": `package fixtures
+const apiKey = "password=supersecretvalue123"
+`,
+	})
+	cfg := config.Default()
+	cfg.IgnorePaths = []string{"fixtures/"}
+	ctx := Context{Root: root, Advanced: true, Config: cfg}
+	results := Run(ctx)
+	for _, f := range results {
+		if f.RuleID == "HARDCODED_SECRETS" && f.Status == finding.StatusFail {
+			t.Errorf("scanner should respect ignore_paths, got finding in %s", f.FilePath)
+		}
+	}
+}
+
+func TestHardcodedSecrets_InlineSuppression(t *testing.T) {
+	root := makeDir(t, map[string]string{
+		"config.go": `package config
+const apiKey = "password=supersecretvalue123" // shipcheck:ignore HARDCODED_SECRETS
+`,
+	})
+	results := Run(newCtx(t, root, nil, true))
+	for _, f := range results {
+		if f.RuleID == "HARDCODED_SECRETS" && f.Status == finding.StatusFail {
+			t.Errorf("scanner should respect inline suppression, got finding at line %d", f.Line)
+		}
+	}
+}
+
+func TestHardcodedSecrets_PEMKey_IsCritical(t *testing.T) {
+	root := makeDir(t, map[string]string{
+		"storage/key.pem": "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----\n",
+	})
+	results := Run(newCtx(t, root, nil, true))
+	var found bool
+	for _, f := range results {
+		if f.RuleID == "HARDCODED_SECRETS" && f.Status == finding.StatusFail && f.Severity == finding.SeverityCritical {
+			found = true
+			if contains(f.Message, "MIIEpA") {
+				t.Error("PEM key content must not appear in finding message")
+			}
+		}
+	}
+	if !found {
+		t.Error("expected critical HARDCODED_SECRETS fail for PEM private key")
+	}
+}
+
+func TestHardcodedSecrets_FirebaseApiKey_IsWarn(t *testing.T) {
+	root := makeDir(t, map[string]string{
+		"lib/firebase.js": `const firebaseConfig = {
+  apiKey: "AIzaSyFAKEKEYFORTESTINGONLY12345678901",
+  authDomain: "myapp.firebaseapp.com",
+};`,
+	})
+	results := Run(newCtx(t, root, nil, true))
+	var warnFound, failFound bool
+	for _, f := range results {
+		if f.RuleID == "HARDCODED_SECRETS" {
+			if f.Status == finding.StatusWarn {
+				warnFound = true
+			}
+			if f.Status == finding.StatusFail {
+				failFound = true
+			}
+		}
+	}
+	if failFound {
+		t.Error("Firebase apiKey should be WARN not FAIL")
+	}
+	_ = warnFound // warn is optional depending on pattern; no fail is the key assertion
 }

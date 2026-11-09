@@ -9,9 +9,9 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/rashid1125/launchsafe/cmd"
-	"github.com/rashid1125/launchsafe/internal/detect"
-	"github.com/rashid1125/launchsafe/internal/output"
+	"github.com/rashid1125/shipcheck/cmd"
+	"github.com/rashid1125/shipcheck/internal/detect"
+	"github.com/rashid1125/shipcheck/internal/output"
 )
 
 func fixtureDir(name string) string {
@@ -212,5 +212,56 @@ func TestFixture_SummaryConsistency(t *testing.T) {
 			t.Errorf("%s: summary mismatch: reported {p:%d,w:%d,f:%d}, counted {p:%d,w:%d,f:%d}",
 				dir, rep.Summary.Pass, rep.Summary.Warn, rep.Summary.Fail, pass, warn, fail)
 		}
+	}
+}
+
+// ─── Demo monorepo (Task 2) ───────────────────────────────────────────────────
+
+func TestFixture_DemoMonorepo_Depth(t *testing.T) {
+	rep := runCheck(t, fixtureDir("demo-monorepo"), "--depth", "2", "--advanced")
+
+	// Both php and node stacks should appear somewhere across sub-projects.
+	phpFound, nodeFound := false, false
+	for _, f := range rep.Findings {
+		for _, stack := range rep.Stacks {
+			if stack.Language == "php" {
+				phpFound = true
+			}
+			if stack.Language == "node" {
+				nodeFound = true
+			}
+		}
+		// At least one finding must have a sub_project set.
+		_ = f
+	}
+
+	if !phpFound {
+		t.Errorf("expected php stack across findings, stacks: %v", rep.Stacks)
+	}
+	if !nodeFound {
+		t.Errorf("expected node stack across findings, stacks: %v", rep.Stacks)
+	}
+
+	// At least one finding must carry a sub_project field.
+	var hasSubProject bool
+	for _, f := range rep.Findings {
+		if f.SubProject != "" {
+			hasSubProject = true
+			break
+		}
+	}
+	if !hasSubProject {
+		t.Error("expected at least one finding with sub_project set in monorepo mode")
+	}
+
+	// GITIGNORE_ENV fail must appear (frontend/.env exists but .gitignore doesn't cover it).
+	var gitignoreEnvFail bool
+	for _, f := range rep.Findings {
+		if f.RuleID == "GITIGNORE_ENV" && f.Status == "fail" {
+			gitignoreEnvFail = true
+		}
+	}
+	if !gitignoreEnvFail {
+		t.Error("expected GITIGNORE_ENV fail for frontend sub-project (.env not in .gitignore)")
 	}
 }

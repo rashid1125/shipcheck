@@ -1,33 +1,40 @@
-// Package output formats LaunchSafe check results as text, JSON, or SARIF.
+// Package output formats ShipCheck results as text, JSON, or SARIF 2.1.0.
 package output
 
 import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
-	"github.com/rashid1125/launchsafe/internal/detect"
-	"github.com/rashid1125/launchsafe/internal/finding"
+	"github.com/rashid1125/shipcheck/internal/detect"
+	"github.com/rashid1125/shipcheck/internal/finding"
 )
 
 // Report is the full data model shared by all formatters.
+// ScanDepth > 0 indicates a monorepo scan with --depth N.
 type Report struct {
-	Version  string            `json:"version"`
-	Path     string            `json:"path"`
-	Mode     string            `json:"mode"` // "basic" or "advanced"
-	Stacks   []detect.Stack    `json:"stacks"`
-	Summary  finding.Summary   `json:"summary"`
-	Findings []finding.Finding `json:"findings"`
+	Version   string            `json:"version"`
+	Path      string            `json:"path"`
+	Mode      string            `json:"mode"`
+	ScanDepth int               `json:"scan_depth,omitempty"`
+	Stacks    []detect.Stack    `json:"stacks"`
+	Summary   finding.Summary   `json:"summary"`
+	Findings  []finding.Finding `json:"findings"`
 }
 
-// ─── Text ────────────────────────────────────────────────────────────────────
+// ─── Text ─────────────────────────────────────────────────────────────────────
 
-// WriteText writes a human-readable text report to w.
+// WriteText writes a human-readable text report.
 func WriteText(w io.Writer, r Report) error {
-	fmt.Fprintf(w, "LaunchSafe %s — Deployment Readiness Check\n", r.Version)
+	fmt.Fprintf(w, "ShipCheck %s — Deployment Readiness Check\n", r.Version)
 	fmt.Fprintf(w, "Path: %s\n", r.Path)
-	fmt.Fprintf(w, "Mode: %s\n\n", r.Mode)
+	fmt.Fprintf(w, "Mode: %s\n", r.Mode)
+	if r.ScanDepth > 0 {
+		fmt.Fprintf(w, "Depth: %d\n", r.ScanDepth)
+	}
+	fmt.Fprintln(w)
 
 	if len(r.Stacks) > 0 {
 		fmt.Fprintln(w, "Detected stacks:")
@@ -45,7 +52,15 @@ func WriteText(w io.Writer, r Report) error {
 	}
 
 	fmt.Fprintln(w, "Findings:")
+
+	// Group by SubProject for monorepo output.
+	currentSP := ""
 	for _, f := range r.Findings {
+		if f.SubProject != "" && f.SubProject != currentSP {
+			currentSP = f.SubProject
+			fmt.Fprintf(w, "\n  ── sub-project: %s ──\n", currentSP)
+		}
+
 		icon := statusIcon(f.Status)
 		loc := ""
 		if f.FilePath != "" {
@@ -55,8 +70,12 @@ func WriteText(w io.Writer, r Report) error {
 				loc = fmt.Sprintf(" [%s]", f.FilePath)
 			}
 		}
+		ruleLabel := f.RuleID
+		if f.SubProject != "" {
+			ruleLabel = f.RuleID
+		}
 		fmt.Fprintf(w, "  %s %-6s [%-24s] %s%s\n",
-			icon, strings.ToUpper(f.Status), f.RuleID, f.Message, loc)
+			icon, strings.ToUpper(f.Status), ruleLabel, f.Message, loc)
 		if f.Recommendation != "" && f.Status != finding.StatusPass {
 			fmt.Fprintf(w, "             → %s\n", f.Recommendation)
 		}
@@ -81,18 +100,16 @@ func statusIcon(status string) string {
 	}
 }
 
-// ─── JSON ────────────────────────────────────────────────────────────────────
+// ─── JSON ─────────────────────────────────────────────────────────────────────
 
-// WriteJSON writes a valid JSON report to w.
+// WriteJSON writes a valid JSON report.
 func WriteJSON(w io.Writer, r Report) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(r)
 }
 
-// ─── SARIF ───────────────────────────────────────────────────────────────────
-
-// SARIF 2.1.0 structures (minimal but valid).
+// ─── SARIF ────────────────────────────────────────────────────────────────────
 
 type sarifLog struct {
 	Schema  string     `json:"$schema"`
@@ -152,9 +169,8 @@ type sarifRegion struct {
 	StartLine int `json:"startLine"`
 }
 
-// WriteSARIF writes a SARIF 2.1.0 report to w.
+// WriteSARIF writes a SARIF 2.1.0 report.
 func WriteSARIF(w io.Writer, r Report) error {
-	// Deduplicate rules by RuleID.
 	ruleSet := map[string]bool{}
 	var rules []sarifRule
 	for _, f := range r.Findings {
@@ -180,10 +196,14 @@ func WriteSARIF(w io.Writer, r Report) error {
 			Message: sarifMessage{Text: f.Message},
 		}
 		if f.FilePath != "" {
+			uri := f.FilePath
+			if f.SubProject != "" && f.SubProject != "." {
+				uri = filepath.ToSlash(filepath.Join(f.SubProject, f.FilePath))
+			}
 			loc := sarifLocation{
 				PhysicalLocation: sarifPhysLoc{
 					ArtifactLocation: sarifArtLoc{
-						URI:       f.FilePath,
+						URI:       uri,
 						URIBaseID: "%SRCROOT%",
 					},
 				},
@@ -202,9 +222,9 @@ func WriteSARIF(w io.Writer, r Report) error {
 		Runs: []sarifRun{{
 			Tool: sarifTool{
 				Driver: sarifDriver{
-					Name:           "LaunchSafe",
+					Name:           "ShipCheck",
 					Version:        r.Version,
-					InformationURI: "https://github.com/rashid1125/launchsafe",
+					InformationURI: "https://github.com/rashid1125/shipcheck",
 					Rules:          rules,
 				},
 			},

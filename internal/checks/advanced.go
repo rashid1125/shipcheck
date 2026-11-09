@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/rashid1125/launchsafe/internal/finding"
+	"github.com/rashid1125/shipcheck/internal/finding"
 )
 
 // LOCKFILE_PRESENT checks for a dependency lockfile (advanced mode).

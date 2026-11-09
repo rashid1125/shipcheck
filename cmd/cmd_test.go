@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rashid1125/launchsafe/internal/output"
+	"github.com/rashid1125/shipcheck/internal/output"
 )
 
 func run(args ...string) (stdout, stderr string, code int) {
@@ -39,7 +39,7 @@ func TestVersion(t *testing.T) {
 	if code != ExitSuccess {
 		t.Errorf("version: exit %d", code)
 	}
-	if !strings.Contains(out, "launchsafe version") {
+	if !strings.Contains(out, "shipcheck version") {
 		t.Errorf("version output missing expected string: %q", out)
 	}
 }

@@ -41,5 +41,5 @@ jobs:
         run: go test -v -race ./...
 
       - name: Build binary
-        run: go build -ldflags="-X github.com/rashid1125/launchsafe/cmd.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)" -o launchsafe-${{ matrix.os }} .
+        run: go build -ldflags="-X github.com/rashid1125/shipcheck/cmd.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)" -o shipcheck-${{ matrix.os }} .
         shell: bash

@@ -1,197 +1,150 @@
-# LaunchSafe
+![CI](https://github.com/rashid1125/shipcheck/actions/workflows/ci.yml/badge.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![Go version](https://img.shields.io/badge/Go-1.22+-00ADD8.svg)
 
-A local, read-only deployment-readiness CLI for developers. Run it before you deploy to catch common configuration issues before they cause production problems.
+# ShipCheck
+
+Offline deployment-readiness preflight for any project — checks env, gitignore, Docker, CI and credential patterns in one binary, no network required.
+
+## Quick start
+
+```bash
+go install github.com/rashid1125/shipcheck@latest
+shipcheck check --path ./myapp
+shipcheck check --path ./myapp --advanced --format json
+```
+
+## Sample output
+
+Running against the included demo monorepo frontend:
 
 ```
-$ launchsafe check --path ./myapp --advanced
-LaunchSafe 0.1.0 — Deployment Readiness Check
-Path: /home/user/myapp
-Mode: advanced
+$ shipcheck check --path testdata/demo-monorepo/frontend
+
+ShipCheck 0.2.0 — Deployment Readiness Check
+Path: /project/testdata/demo-monorepo/frontend
+Mode: basic
 
 Detected stacks:
   • node (nextjs) [package.json]
 
 Findings:
   ✓ PASS   [MANIFEST_PRESENT        ] Project manifest found: node
+  ✓ PASS   [MANIFEST_READABLE       ] package.json is valid JSON.
   ✓ PASS   [START_COMMAND           ] Node.js start script found: next start
-  ✗ FAIL   [GITIGNORE_ENV           ] .env file exists but is not excluded by .gitignore.
+  ✓ PASS   [ENV_TEMPLATE            ] Environment template found: .env.example
+  ✗ FAIL   [GITIGNORE_ENV           ] .env file exists but does not appear to be excluded by .gitignore.
              → Add `.env` or `.env*` to your .gitignore immediately to prevent committing secrets.
   ⚠ WARN   [DOCKERFILE_PRESENT      ] No Dockerfile found.
-  ...
+  ⚠ WARN   [CI_PRESENT              ] No CI configuration found.
 
-Summary: 8 passed, 3 warnings, 1 failed
+Summary: 4 passed, 2 warnings, 1 failed
 ```
-
-## Safety model
-
-- **Local and read-only by default.** LaunchSafe only reads files; it never writes, executes, or modifies your project.
-- **No network requests.** All checks are offline.
-- **Secrets are never displayed.** The heuristic credential scan reports a file and line number only; the matched text is never shown.
-- **Heuristics are labelled.** Any check that uses pattern matching is clearly labelled as heuristic, with its limitations documented.
-- **Missing files are warnings, not failures.** A missing Dockerfile or CI config is a warning because these are optional for many deployment setups.
 
 ## Install
 
 ### Option 1 — `go install` (easiest for Go developers)
 
 ```bash
-go install github.com/rashid1125/launchsafe@latest
-launchsafe version
+go install github.com/rashid1125/shipcheck@latest
+shipcheck version
 ```
 
-> Requires Go 1.22+. The binary lands in `$(go env GOPATH)/bin` (usually `~/go/bin`).
+> Requires Go 1.22+. Binary lands in `$(go env GOPATH)/bin` (usually `~/go/bin`).
 
----
+### Option 2 — Download pre-built binary (no Go required)
 
-### Option 2 — Download pre-built binary (no Go needed)
-
-Go to the [Releases page](https://github.com/rashid1125/launchsafe/releases) and download
-the binary for your platform:
+Go to [Releases](https://github.com/rashid1125/shipcheck/releases) and pick your platform:
 
 | Platform | File |
 |----------|------|
-| Linux (Intel/AMD 64-bit) | `launchsafe-linux-amd64` |
-| Linux (ARM64 / Graviton) | `launchsafe-linux-arm64` |
-| macOS (Intel) | `launchsafe-darwin-amd64` |
-| macOS (Apple Silicon M1/M2) | `launchsafe-darwin-arm64` |
-| Windows (64-bit) | `launchsafe-windows-amd64.exe` |
+| Linux amd64 | `shipcheck-linux-amd64` |
+| Linux arm64 | `shipcheck-linux-arm64` |
+| macOS Intel | `shipcheck-darwin-amd64` |
+| macOS Apple Silicon | `shipcheck-darwin-arm64` |
+| Windows 64-bit | `shipcheck-windows-amd64.exe` |
 
 ```bash
 # Linux / macOS
-chmod +x launchsafe-linux-amd64
-sudo mv launchsafe-linux-amd64 /usr/local/bin/launchsafe
-launchsafe version
-
-# Windows — rename to launchsafe.exe and add to PATH
+chmod +x shipcheck-linux-amd64
+sudo mv shipcheck-linux-amd64 /usr/local/bin/shipcheck
+shipcheck version
 ```
 
-**One-liner install script (Linux / macOS):**
+One-liner install (Linux / macOS):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rashid1125/launchsafe/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/rashid1125/shipcheck/main/install.sh | bash
 ```
 
-**Verify checksum** (recommended):
-
-```bash
-sha256sum -c checksums.txt
-```
-
----
+The script downloads the binary, verifies the SHA-256 checksum, and exits non-zero if verification fails.
 
 ### Option 3 — Docker (GitHub Packages)
 
-The Docker image is published automatically to GitHub Container Registry on every release.
-
 ```bash
-# Pull latest image
-docker pull ghcr.io/rashid1125/launchsafe:latest
-
-# Run against the current directory
-docker run --rm -v "$(pwd):/project" ghcr.io/rashid1125/launchsafe:latest check --path /project
-
-# Advanced mode
-docker run --rm -v "$(pwd):/project" ghcr.io/rashid1125/launchsafe:latest check --path /project --advanced
-
-# Pin to a specific version
-docker pull ghcr.io/rashid1125/launchsafe:0.1.0
+docker pull ghcr.io/rashid1125/shipcheck:latest
+docker run --rm -v "$(pwd):/project" ghcr.io/rashid1125/shipcheck:latest check --path /project --advanced
 ```
 
-> The image is available on the [GitHub Packages page](https://github.com/rashid1125/launchsafe/pkgs/container/launchsafe).
-> Multi-platform: `linux/amd64` and `linux/arm64`.
-
----
+Multi-arch image: `linux/amd64` and `linux/arm64`.
 
 ### Option 4 — Build from source
 
 ```bash
-git clone https://github.com/rashid1125/launchsafe.git
-cd launchsafe
-make build          # builds ./launchsafe
-make install        # installs to ~/go/bin
-make cross          # builds all platforms into ./dist/
+git clone https://github.com/rashid1125/shipcheck.git
+cd shipcheck
+make build    # builds ./shipcheck
+make install  # installs to ~/go/bin
+make cross    # builds all platforms into ./dist/
 ```
-
-Or without Make:
-
-```bash
-go build -ldflags="-X github.com/rashid1125/launchsafe/cmd.Version=0.1.0" -o launchsafe .
-```
-
----
 
 ## Releasing a new version
 
-1. Push all changes to `main`
-2. Create and push a version tag:
-   ```bash
-   git tag v0.2.0
-   git push origin v0.2.0
-   ```
-3. GitHub Actions automatically builds binaries for all platforms and publishes a GitHub Release.
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+GitHub Actions builds binaries for all five platforms, generates `checksums.txt`, creates a GitHub Release, and pushes a multi-arch Docker image to `ghcr.io`.
 
 ## Usage
 
 ```
-launchsafe <command> [flags]
+shipcheck <command> [flags]
 
 Commands:
   check     Run deployment-readiness checks on a project directory
-  version   Print the launchsafe version
+  version   Print the shipcheck version
   help      Show this help message
 
 Flags for 'check':
   --path DIR       Project directory to check (default: current directory)
-  --advanced       Enable advanced checks
-  --strict         Treat warnings as failures (exit code 1)
+  --depth N        Scan subdirectories up to N levels deep (0 = top-level only)
+  --advanced       Enable advanced checks (lockfiles, secrets scan, framework config, etc.)
+  --strict         Treat warnings as failures; return exit code 1
   --format FORMAT  Output format: text (default), json, sarif
-  --config FILE    Load custom rules from a .launchsafe.json file
-```
-
-### Examples
-
-```bash
-# Check the current directory (basic mode)
-launchsafe check
-
-# Check a specific directory with advanced checks
-launchsafe check --path ./myapp --advanced
-
-# Machine-readable JSON output for CI integration
-launchsafe check --advanced --format json > report.json
-
-# SARIF output for GitHub Code Scanning or other SAST tools
-launchsafe check --advanced --format sarif > results.sarif
-
-# Strict mode: exit 1 if any warnings are found
-launchsafe check --strict
-
-# Use a custom config file
-launchsafe check --config .launchsafe.json
-
-# Check a project and fail the CI step on warnings or failures
-launchsafe check --path . --advanced --strict --format sarif > launchsafe.sarif
+  --config FILE    Load rules from a .shipcheck.json config file
 ```
 
 ## Exit codes
 
 | Code | Meaning |
 |------|---------|
-| 0    | All checks passed (or only warnings, without `--strict`) |
-| 1    | One or more checks failed, OR warnings with `--strict` |
-| 2    | Usage error (invalid command, flag, format, or config) |
+| 0 | All checks passed (or warnings only, without `--strict`) |
+| 1 | One or more checks failed, or warnings with `--strict` |
+| 2 | Usage error (invalid command, flag, format, or config) |
 
 ## Supported stacks
 
-Detection is based on the presence and content of manifest files. Multiple stacks in one repository are all detected and reported.
+Detection is based on manifest files in the scanned directory. All detected stacks are reported in a deterministic, sorted order.
 
 | Language | Detected by | Frameworks detected |
 |----------|-------------|---------------------|
-| Node.js  | `package.json` | Next.js, Express, Fastify, Nuxt, NestJS, React, Vue, Svelte, Vite |
-| PHP      | `composer.json`, `artisan` | Laravel, Symfony |
-| Python   | `pyproject.toml`, `requirements.txt`, `Pipfile` | Django, Flask, FastAPI |
-| Go       | `go.mod` | — |
-| Rust     | `Cargo.toml` | — |
+| Node.js | `package.json` | Next.js, Express, Fastify, Nuxt, NestJS, React, Vue, Svelte, Vite |
+| PHP | `composer.json`, `artisan` | Laravel, Symfony |
+| Python | `pyproject.toml`, `requirements.txt`, `Pipfile` | Django, Flask, FastAPI |
+| Go | `go.mod` | — |
+| Rust | `Cargo.toml` | — |
 
 ## Basic vs Advanced checks
 
@@ -199,11 +152,11 @@ Detection is based on the presence and content of manifest files. Multiple stack
 
 | Rule ID | What it checks | Default severity |
 |---------|----------------|-----------------|
-| `MANIFEST_PRESENT` | At least one manifest file detected | medium (warn) |
+| `MANIFEST_PRESENT` | At least one manifest detected | medium (warn) |
 | `MANIFEST_READABLE` | JSON manifests are valid JSON | high (fail) |
-| `START_COMMAND` | A production entry point or start command exists | low (warn) |
-| `ENV_TEMPLATE` | An `.env.example` / `.env.sample` template exists | low (warn) |
-| `GITIGNORE_ENV` | `.env` files are excluded in `.gitignore` | medium/high |
+| `START_COMMAND` | A production entry point exists | low (warn) |
+| `ENV_TEMPLATE` | An `.env.example` / `.env.sample` exists | low (warn) |
+| `GITIGNORE_ENV` | `.env` files excluded in `.gitignore` | medium/high |
 | `DOCKERFILE_PRESENT` | A Dockerfile exists (optional for many setups) | info (warn) |
 | `CI_PRESENT` | CI configuration exists (optional) | info (warn) |
 
@@ -214,196 +167,97 @@ All basic checks plus:
 | Rule ID | What it checks | Default severity |
 |---------|----------------|-----------------|
 | `LOCKFILE_PRESENT` | A dependency lockfile exists | medium (warn) |
-| `DOCKER_COMPOSE_PRESENT` | A Docker Compose file exists (optional) | info (warn) |
-| `GITHUB_ACTIONS_PRESENT` | `.github/workflows/*.yml` files exist | info (warn) |
-| `PUBLIC_ENV_EXPOSED` | `.env` files are not in publicly-served directories | critical (fail) |
+| `DOCKER_COMPOSE_PRESENT` | A Docker Compose file exists | info (warn) |
+| `GITHUB_ACTIONS_PRESENT` | `.github/workflows/*.yml` exist | info (warn) |
+| `PUBLIC_ENV_EXPOSED` | `.env` files not in publicly-served directories | critical (fail) |
 | `DOCKERFILE_BASIC` | Dockerfile has FROM, EXPOSE, non-root USER | medium (warn) |
-| `FRAMEWORK_CONFIG` | Framework-specific config checks (Laravel, Next.js, Django) | medium (warn) |
-| `HARDCODED_SECRETS` | **Heuristic** scan for credential patterns in source files | high (fail) |
+| `FRAMEWORK_CONFIG` | Framework-specific checks (Laravel, Next.js, Django) | medium (warn) |
+| `HARDCODED_SECRETS` | **Heuristic** scan for credential patterns | high/critical (fail) |
 
-## Configuration file
+## Monorepo / subdirectory scanning
 
-Create `.launchsafe.json` in your project root (or specify with `--config`):
+Use `--depth N` to scan sub-directories up to N levels deep:
+
+```bash
+shipcheck check --path ./my-monorepo --depth 3 --advanced
+```
+
+Each finding includes a `sub_project` field (relative path) in JSON and SARIF output, and is grouped visually in text output:
+
+```
+  ── sub-project: backend ──
+  ✓ PASS   [MANIFEST_PRESENT        ] ...
+
+  ── sub-project: frontend ──
+  ✗ FAIL   [GITIGNORE_ENV           ] ...
+```
+
+Sub-directories named `node_modules`, `vendor`, `.git`, `dist`, `build`, `.next`, `target`, `__pycache__`, `venv`, `.venv` are always skipped.
+
+## Configuration file (.shipcheck.json)
+
+Create `.shipcheck.json` in your project root (or pass `--config`):
 
 ```json
 {
   "disabled_rules": ["DOCKERFILE_PRESENT", "CI_PRESENT"],
   "severity_overrides": {
-    "LOCKFILE_PRESENT": "high",
-    "GITHUB_ACTIONS_PRESENT": "medium"
-  }
+    "LOCKFILE_PRESENT": "high"
+  },
+  "ignore_paths": ["docs/", "scripts/fixtures/"]
 }
 ```
 
-**`disabled_rules`** — rule IDs to exclude from findings and summary counts.
+- **`disabled_rules`** — exclude rules from findings and summary counts.
+- **`severity_overrides`** — override a rule's severity. Valid values: `info`, `low`, `medium`, `high`, `critical`.
+- **`ignore_paths`** — path prefixes (relative to project root) excluded from the `HARDCODED_SECRETS` scan.
 
-**`severity_overrides`** — override the severity of a rule. Valid values: `info`, `low`, `medium`, `high`, `critical`.
+`.launchsafe.json` is still accepted as a deprecated fallback (a notice is printed to stderr).
 
-LaunchSafe automatically looks for `.launchsafe.json` in the project directory. Use `--config` to point to a file elsewhere.
+### Inline suppression
+
+Add a comment on any source line to suppress secret-scan findings for that line:
+
+```js
+const vapidKey = "BM3..."; // shipcheck:ignore HARDCODED_SECRETS
+```
 
 ## Output formats
 
 ### text (default)
 
-Human-readable, with icons (✓/⚠/✗), rule IDs, messages, and actionable recommendations.
+Human-readable with icons (✓/⚠/✗), rule IDs, messages, and actionable recommendations.
 
 ### json
 
-Stable JSON object with `version`, `path`, `mode`, `stacks`, `summary`, and `findings` arrays. Suitable for parsing in CI pipelines.
-
-```json
-{
-  "version": "0.1.0",
-  "path": "/path/to/project",
-  "mode": "basic",
-  "stacks": [{"language": "node", "framework": "nextjs", "manifest": "package.json"}],
-  "summary": {"pass": 5, "warn": 2, "fail": 1},
-  "findings": [
-    {
-      "rule_id": "GITIGNORE_ENV",
-      "severity": "high",
-      "status": "fail",
-      "message": ".env file exists but is not excluded by .gitignore.",
-      "file_path": ".gitignore",
-      "recommendation": "Add `.env` or `.env*` to your .gitignore immediately."
-    }
-  ]
-}
-```
+Stable JSON including `version`, `path`, `mode`, `scan_depth`, `stacks`, `summary`, and `findings`. Each finding may carry a `sub_project` field.
 
 ### sarif
 
-Valid SARIF 2.1.0 output with rule metadata and physical locations. Upload to GitHub Code Scanning or any compatible SAST platform.
+Valid SARIF 2.1.0 with rule metadata and physical locations. Upload to GitHub Code Scanning or any SARIF-compatible SAST platform.
+
+## How ShipCheck differs from gitleaks / trufflehog
+
+ShipCheck's credential scan (`HARDCODED_SECRETS`) is a lightweight heuristic pass — it catches obvious patterns quickly as part of a broader deployment preflight that also checks gitignore hygiene, env templates, Docker, CI, and framework config. It is not a replacement for dedicated secret scanners.
+
+For thorough secret scanning with git-history traversal, high-accuracy rules, and team-workflow features (e.g. pre-commit hooks, CI integration, allowlists), use [gitleaks](https://github.com/gitleaks/gitleaks) or [trufflehog](https://github.com/trufflesecurity/trufflehog) in addition to ShipCheck. They are complementary, not competing tools.
 
 ## Known limitations
 
-- **Detection is top-level only.** Manifests in subdirectories are not scanned.
-- **Heuristic secret scan has false positives and negatives.** It uses regex patterns, not entropy analysis or a full AST. A clean result does not prove the absence of secrets. Use a dedicated tool (truffleHog, gitleaks, git-secrets) for thorough analysis.
-- **YAML files are not parsed.** GitHub Actions workflow checks only verify file existence, not content validity.
-- **Dockerfile parsing is heuristic.** Multi-stage builds, ARG-based FROM, and complex Dockerfile syntax may not be handled correctly.
-- **No Windows path testing.** The CI matrix includes Windows, but cross-platform edge cases in path handling may exist.
-- **No network checks.** LaunchSafe does not verify that environment variables, external services, or DNS entries are correctly configured for production.
-
-## Real-world example — TradingERP (Laravel + Vite + Next.js frontend)
-
-LaunchSafe was tested against a real multi-stack project containing a Laravel backend
-(`TradingERP/`) and a Next.js frontend (`frontend/`).
-
-### Backend — Laravel + Vite (basic mode)
-
-```
-$ launchsafe check --path ./TradingERP
-
-LaunchSafe 0.1.0 — Deployment Readiness Check
-Path: /var/www/PHP-Project/TradingERP
-Mode: basic
-
-Detected stacks:
-  • node (vite) [package.json]
-  • php (laravel) [composer.json]
-
-Findings:
-  ✓ PASS   [MANIFEST_PRESENT        ] Project manifest found: node, php
-  ✓ PASS   [MANIFEST_READABLE       ] package.json is valid JSON.
-  ✓ PASS   [MANIFEST_READABLE       ] composer.json is valid JSON.
-  ⚠ WARN   [START_COMMAND           ] No `scripts.start` found in package.json.
-             → Add a `start` script to package.json or add a Procfile.
-  ✓ PASS   [ENV_TEMPLATE            ] Environment template found: .env.example
-  ✓ PASS   [GITIGNORE_ENV           ] .env is covered by .gitignore.
-  ✓ PASS   [DOCKERFILE_PRESENT      ] Dockerfile found: Dockerfile
-  ✓ PASS   [CI_PRESENT              ] CI configuration found: azure-pipelines.yml
-
-Summary: 7 passed, 1 warnings, 0 failed
-```
-
-### Backend — Laravel + Vite (advanced mode — notable findings)
-
-```
-$ launchsafe check --path ./TradingERP --advanced
-
-  ⚠ WARN   [DOCKERFILE_BASIC        ] Dockerfile does not contain an EXPOSE instruction.
-             → Add an EXPOSE instruction to document the port your container listens on.
-  ⚠ WARN   [DOCKERFILE_BASIC        ] Dockerfile does not set a non-root USER.
-             → Add a USER instruction to run the container as a non-root user.
-  ✓ PASS   [FRAMEWORK_CONFIG        ] Laravel .env.example contains APP_KEY entry.
-  ✗ FAIL   [HARDCODED_SECRETS       ] HEURISTIC: Possible hard-coded credential pattern detected.
-                                       [storage/oauth-private.key:1]
-  ✗ FAIL   [HARDCODED_SECRETS       ] HEURISTIC: Possible hard-coded credential pattern detected.
-                                       [resources/js/firebase-init.js:10]
-  ✗ FAIL   [HARDCODED_SECRETS       ] HEURISTIC: Possible hard-coded credential pattern detected.
-                                       [app/Http/Controllers/Developer/AuthController.php:96]
-  ...
-
-Summary: 11 passed, 4 warnings, 34 failed
-```
-
-> **Note:** `storage/oauth-private.key` is a real OAuth private key committed to the repo —
-> this should be removed and regenerated. `firebase-init.js` may contain a Firebase API key
-> that should be moved to an environment variable. Test files flagged are likely false positives
-> using dummy credentials; add `HARDCODED_SECRETS` to `disabled_rules` or fix per file.
-
-### Frontend — Next.js (basic mode — clean pass)
-
-```
-$ launchsafe check --path ./frontend
-
-LaunchSafe 0.1.0 — Deployment Readiness Check
-Path: /var/www/PHP-Project/frontend
-Mode: basic
-
-Detected stacks:
-  • node (nextjs) [package.json]
-
-Findings:
-  ✓ PASS   [MANIFEST_PRESENT        ] Project manifest found: node
-  ✓ PASS   [MANIFEST_READABLE       ] package.json is valid JSON.
-  ✓ PASS   [START_COMMAND           ] Node.js start script found: next start
-  ✓ PASS   [ENV_TEMPLATE            ] Environment template found: .env.example
-  ✓ PASS   [GITIGNORE_ENV           ] .env is covered by .gitignore.
-  ✓ PASS   [DOCKERFILE_PRESENT      ] Dockerfile found: Dockerfile
-  ✓ PASS   [CI_PRESENT              ] CI configuration found: azure-pipelines.yml
-
-Summary: 7 passed, 0 warnings, 0 failed
-```
-
-### Frontend — Next.js (advanced mode — secrets scan flagged issues)
-
-```
-$ launchsafe check --path ./frontend --advanced
-
-  ✓ PASS   [LOCKFILE_PRESENT        ] Dependency lockfile found: package-lock.json
-  ✓ PASS   [DOCKER_COMPOSE_PRESENT  ] Docker Compose file found: docker-compose.yml
-  ✓ PASS   [DOCKERFILE_BASIC        ] Dockerfile passes basic checks.
-  ✓ PASS   [FRAMEWORK_CONFIG        ] Next.js configuration file found.
-  ✗ FAIL   [HARDCODED_SECRETS       ] HEURISTIC: Possible hard-coded credential pattern detected.
-                                       [lib/config.js:28]
-  ✗ FAIL   [HARDCODED_SECRETS       ] HEURISTIC: Possible hard-coded credential pattern detected.
-                                       [lib/reverb.js:21]
-  ✗ FAIL   [HARDCODED_SECRETS       ] HEURISTIC: Possible hard-coded credential pattern detected.
-                                       [hooks/useBrowserPush.js:78]
-  ...
-
-Summary: 12 passed, 1 warnings, 24 failed
-```
-
-> **Note:** `lib/config.js` and `lib/reverb.js` contain token-like assignments worth reviewing.
-> `hooks/useBrowserPush.js` may contain a Web Push public key (VAPID key) — these are
-> intentionally public-facing but still flagged by the heuristic scanner. Review each flagged
-> file; use `.launchsafe.json` to suppress confirmed false positives.
-
-### Multi-stack detection in action
-
-Both projects demonstrate that LaunchSafe correctly handles repositories with more than one
-manifest (`node` + `php` in TradingERP) and reports all detected stacks in a deterministic,
-sorted order.
+- **Monorepo depth**: `--depth` values larger than the actual directory structure are safe but add no value.
+- **Heuristic secret scan has false positives and negatives.** A clean result does not prove the absence of secrets; use gitleaks/trufflehog for thorough analysis.
+- **YAML files are not parsed.** GitHub Actions workflow checks only verify file existence.
+- **Dockerfile parsing is heuristic.** Multi-stage builds and complex ARG-based patterns may not be handled correctly.
+- **No network checks.** ShipCheck cannot verify DNS, external services, or cloud configuration.
 
 ## Development
 
 ```bash
-go test ./...          # run all tests
-go vet ./...           # static analysis
-gofmt -w .             # format code
-go build -o launchsafe . # build binary
+go test ./...      # run all tests
+go vet ./...       # static analysis
+gofmt -w .         # format code
+make build         # build binary
+make cross         # build all platforms into ./dist/
 ```
 
 ## License

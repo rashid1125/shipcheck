@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/rashid1125/launchsafe/internal/config"
-	"github.com/rashid1125/launchsafe/internal/detect"
-	"github.com/rashid1125/launchsafe/internal/finding"
+	"github.com/rashid1125/shipcheck/internal/config"
+	"github.com/rashid1125/shipcheck/internal/detect"
+	"github.com/rashid1125/shipcheck/internal/finding"
 )
 
 // Context carries everything a check needs.
@@ -115,7 +115,7 @@ func checkManifestPresent(ctx Context) []finding.Finding {
 	}
 	return []finding.Finding{warn(id, finding.SeverityMedium,
 		"No recognised project manifest found (package.json, go.mod, Cargo.toml, composer.json, requirements.txt, pyproject.toml, Pipfile).",
-		"Ensure the manifest file is present in the project root. LaunchSafe checks the top-level directory only.")}
+		"Ensure the manifest file is present in the project root. ShipCheck checks the top-level directory by default; use --depth to scan subdirectories.")}
 }
 
 // MANIFEST_READABLE checks that detected manifests can be parsed.

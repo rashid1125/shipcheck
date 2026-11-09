@@ -6,11 +6,11 @@ on:
       - "v*"
 
 permissions:
-  contents: write         # create GitHub Releases + upload assets
-  packages: write         # push Docker image to ghcr.io (GitHub Packages)
+  contents: write   # create GitHub Releases and upload assets
+  packages: write   # push Docker image to ghcr.io
 
 jobs:
-  # ── 1. Build binaries + GitHub Release ─────────────────────────────────────
+  # ── 1. Build binaries + GitHub Release ──────────────────────────────────────
   release:
     name: Build & Release Binaries
     runs-on: ubuntu-latest
@@ -36,14 +36,14 @@ jobs:
 
       - name: Build all platforms
         env:
-          LDFLAGS: -s -w -X github.com/rashid1125/launchsafe/cmd.Version=${{ steps.version.outputs.VERSION }}
+          LDFLAGS: -s -w -X github.com/rashid1125/shipcheck/cmd.Version=${{ steps.version.outputs.VERSION }}
         run: |
           mkdir -p dist
-          GOOS=linux   GOARCH=amd64  go build -ldflags="$LDFLAGS" -o dist/launchsafe-linux-amd64       .
-          GOOS=linux   GOARCH=arm64  go build -ldflags="$LDFLAGS" -o dist/launchsafe-linux-arm64       .
-          GOOS=darwin  GOARCH=amd64  go build -ldflags="$LDFLAGS" -o dist/launchsafe-darwin-amd64      .
-          GOOS=darwin  GOARCH=arm64  go build -ldflags="$LDFLAGS" -o dist/launchsafe-darwin-arm64      .
-          GOOS=windows GOARCH=amd64  go build -ldflags="$LDFLAGS" -o dist/launchsafe-windows-amd64.exe .
+          GOOS=linux   GOARCH=amd64  go build -ldflags="$LDFLAGS" -o dist/shipcheck-linux-amd64       .
+          GOOS=linux   GOARCH=arm64  go build -ldflags="$LDFLAGS" -o dist/shipcheck-linux-arm64       .
+          GOOS=darwin  GOARCH=amd64  go build -ldflags="$LDFLAGS" -o dist/shipcheck-darwin-amd64      .
+          GOOS=darwin  GOARCH=arm64  go build -ldflags="$LDFLAGS" -o dist/shipcheck-darwin-arm64      .
+          GOOS=windows GOARCH=amd64  go build -ldflags="$LDFLAGS" -o dist/shipcheck-windows-amd64.exe .
 
       - name: Create checksums
         working-directory: dist
@@ -52,32 +52,32 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: LaunchSafe ${{ steps.version.outputs.VERSION }}
+          name: ShipCheck ${{ steps.version.outputs.VERSION }}
           body: |
             ## Install
 
             **Option 1 — Go install (requires Go 1.22+):**
             ```bash
-            go install github.com/rashid1125/launchsafe@${{ steps.version.outputs.VERSION }}
+            go install github.com/rashid1125/shipcheck@${{ steps.version.outputs.VERSION }}
             ```
 
             **Option 2 — Download binary** (pick your platform below):
             ```bash
             # Linux / macOS
-            chmod +x launchsafe-*
-            sudo mv launchsafe-* /usr/local/bin/launchsafe
-            launchsafe version
+            chmod +x shipcheck-*
+            sudo mv shipcheck-* /usr/local/bin/shipcheck
+            shipcheck version
             ```
 
-            **Option 3 — Docker (GitHub Packages):**
+            **Option 3 — Docker:**
             ```bash
-            docker pull ghcr.io/rashid1125/launchsafe:${{ steps.version.outputs.VERSION }}
-            docker run --rm -v "$(pwd):/project" ghcr.io/rashid1125/launchsafe check --path /project
+            docker pull ghcr.io/rashid1125/shipcheck:${{ steps.version.outputs.VERSION }}
+            docker run --rm -v "$(pwd):/project" ghcr.io/rashid1125/shipcheck:${{ steps.version.outputs.VERSION }} check --path /project
             ```
 
             **Option 4 — One-liner install script:**
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/rashid1125/launchsafe/main/install.sh | bash
+            curl -fsSL https://raw.githubusercontent.com/rashid1125/shipcheck/main/install.sh | bash
             ```
 
             **Verify checksum:**
@@ -85,20 +85,20 @@ jobs:
             sha256sum -c checksums.txt
             ```
           files: |
-            dist/launchsafe-linux-amd64
-            dist/launchsafe-linux-arm64
-            dist/launchsafe-darwin-amd64
-            dist/launchsafe-darwin-arm64
-            dist/launchsafe-windows-amd64.exe
+            dist/shipcheck-linux-amd64
+            dist/shipcheck-linux-arm64
+            dist/shipcheck-darwin-amd64
+            dist/shipcheck-darwin-arm64
+            dist/shipcheck-windows-amd64.exe
             dist/checksums.txt
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
 
-  # ── 2. Build & push Docker image to GitHub Packages (ghcr.io) ──────────────
+  # ── 2. Build & push Docker image to ghcr.io ──────────────────────────────────
   docker:
     name: Publish Docker Image to GitHub Packages
     runs-on: ubuntu-latest
-    needs: release          # only publish Docker if binaries succeeded
+    needs: release
 
     steps:
       - name: Check out code
@@ -115,17 +115,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata (tags + labels)
+      - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/rashid1125/launchsafe
+          images: ghcr.io/rashid1125/shipcheck
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
 
-      - name: Set up Docker Buildx (multi-platform)
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push Docker image

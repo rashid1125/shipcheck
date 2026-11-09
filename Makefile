@@ -1,6 +1,6 @@
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS  := -s -w -X github.com/rashid1125/launchsafe/cmd.Version=$(VERSION)
-BINARY   := launchsafe
+LDFLAGS  := -s -w -X github.com/rashid1125/shipcheck/cmd.Version=$(VERSION)
+BINARY   := shipcheck
 DIST     := dist
 
 .PHONY: build test vet fmt clean install cross help

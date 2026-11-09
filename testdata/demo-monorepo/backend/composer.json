@@ -1,0 +1,4 @@
+{
+  "name": "acme/backend",
+  "require": { "php": "^8.2", "laravel/framework": "^10.0" }
+}

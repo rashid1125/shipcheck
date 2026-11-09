@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rashid1125/launchsafe/internal/detect"
-	"github.com/rashid1125/launchsafe/internal/finding"
+	"github.com/rashid1125/shipcheck/internal/detect"
+	"github.com/rashid1125/shipcheck/internal/finding"
 )
 
 func sampleReport() Report {
@@ -58,7 +58,7 @@ func TestWriteText_Contains(t *testing.T) {
 	out := buf.String()
 
 	checks := []string{
-		"LaunchSafe",
+		"ShipCheck",
 		"/tmp/project",
 		"basic",
 		"node (nextjs)",
@@ -204,7 +204,7 @@ func TestWriteSARIF_Structure(t *testing.T) {
 		t.Fatalf("expected 1 run, got %d", len(got.Runs))
 	}
 	run := got.Runs[0]
-	if run.Tool.Driver.Name != "LaunchSafe" {
+	if run.Tool.Driver.Name != "ShipCheck" {
 		t.Errorf("expected tool name LaunchSafe, got %q", run.Tool.Driver.Name)
 	}
 	if len(run.Results) != 3 {

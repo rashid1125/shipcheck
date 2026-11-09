@@ -1,10 +1,10 @@
-// Package cmd implements the LaunchSafe command-line interface.
+// Package cmd implements the ShipCheck command-line interface.
 //
 // Commands:
 //
-//	launchsafe check   [--path DIR] [--advanced] [--strict] [--format text|json|sarif] [--config FILE]
-//	launchsafe version
-//	launchsafe help
+//	shipcheck check   [flags]
+//	shipcheck version
+//	shipcheck help
 package cmd
 
 import (
@@ -15,11 +15,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/rashid1125/launchsafe/internal/checks"
-	"github.com/rashid1125/launchsafe/internal/config"
-	"github.com/rashid1125/launchsafe/internal/detect"
-	"github.com/rashid1125/launchsafe/internal/finding"
-	"github.com/rashid1125/launchsafe/internal/output"
+	"github.com/rashid1125/shipcheck/internal/checks"
+	"github.com/rashid1125/shipcheck/internal/config"
+	"github.com/rashid1125/shipcheck/internal/detect"
+	"github.com/rashid1125/shipcheck/internal/finding"
+	"github.com/rashid1125/shipcheck/internal/output"
 )
 
 // Version is set at build time via -ldflags; defaults to "dev".
@@ -32,8 +32,7 @@ const (
 	ExitUsage   = 2
 )
 
-// Run is the main entry point. It returns an exit code.
-// Passing in/out/errOut allows tests to capture output.
+// Run is the main entry point. Returns an exit code.
 func Run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, usageText())
@@ -45,7 +44,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	case "check":
 		return runCheck(rest, stdout, stderr)
 	case "version":
-		fmt.Fprintf(stdout, "launchsafe version %s\n", Version)
+		fmt.Fprintf(stdout, "shipcheck version %s\n", Version)
 		return ExitSuccess
 	case "help", "--help", "-h":
 		fmt.Fprintln(stdout, usageText())
@@ -64,28 +63,25 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	advancedFlag := fs.Bool("advanced", false, "enable advanced checks")
 	strictFlag := fs.Bool("strict", false, "treat warnings as failures (exit 1)")
 	formatFlag := fs.String("format", "text", "output format: text, json, sarif")
-	configFlag := fs.String("config", "", "path to .launchsafe.json config file")
+	configFlag := fs.String("config", "", "path to .shipcheck.json config file")
+	depthFlag := fs.Int("depth", 0, "scan subdirectories up to N levels deep (0 = top-level only)")
 
 	if err := fs.Parse(args); err != nil {
-		// flag.ContinueOnError returns ErrHelp for -h/--help.
 		if err == flag.ErrHelp {
 			return ExitSuccess
 		}
 		return ExitUsage
 	}
 
-	// Validate --format.
 	format := strings.ToLower(*formatFlag)
 	if format != "text" && format != "json" && format != "sarif" {
 		fmt.Fprintf(stderr, "invalid --format %q: must be text, json, or sarif\n", *formatFlag)
 		return ExitUsage
 	}
 
-	// Resolve project path.
 	projectPath := *pathFlag
 	if !filepath.IsAbs(projectPath) {
-		wd, err := os.Getwd()
-		if err == nil {
+		if wd, err := os.Getwd(); err == nil {
 			projectPath = filepath.Join(wd, projectPath)
 		}
 	}
@@ -94,7 +90,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		return ExitUsage
 	}
 
-	// Load config.
+	// Load config: explicit flag > .shipcheck.json > .launchsafe.json (deprecated).
 	cfg := config.Default()
 	if *configFlag != "" {
 		loaded, err := config.Load(*configFlag)
@@ -104,50 +100,94 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		}
 		cfg = loaded
 	} else {
-		// Try default config file in the project directory.
-		defaultCfg := filepath.Join(projectPath, config.DefaultConfigFile)
-		if _, err := os.Stat(defaultCfg); err == nil {
-			loaded, err := config.Load(defaultCfg)
+		newCfg := filepath.Join(projectPath, config.DefaultConfigFile)
+		oldCfg := filepath.Join(projectPath, config.DeprecatedConfigFile)
+		if _, err := os.Stat(newCfg); err == nil {
+			loaded, err := config.Load(newCfg)
 			if err != nil {
-				fmt.Fprintf(stderr, "config error in %s: %v\n", defaultCfg, err)
+				fmt.Fprintf(stderr, "config error in %s: %v\n", newCfg, err)
+				return ExitUsage
+			}
+			cfg = loaded
+		} else if _, err := os.Stat(oldCfg); err == nil {
+			fmt.Fprintf(stderr, "note: .launchsafe.json is deprecated; rename to .shipcheck.json\n")
+			loaded, err := config.Load(oldCfg)
+			if err != nil {
+				fmt.Fprintf(stderr, "config error in %s: %v\n", oldCfg, err)
 				return ExitUsage
 			}
 			cfg = loaded
 		}
 	}
 
-	// Detect stacks.
-	detection, err := detect.Detect(projectPath)
-	if err != nil {
-		fmt.Fprintf(stderr, "detection error: %v\n", err)
-		return ExitFailure
-	}
-
-	// Run checks.
 	mode := "basic"
 	if *advancedFlag {
 		mode = "advanced"
 	}
-	ctx := checks.Context{
-		Root:     projectPath,
-		Stacks:   detection.Stacks,
-		Advanced: *advancedFlag,
-		Config:   cfg,
-	}
-	findings := checks.Run(ctx)
-	sum := finding.Summarize(findings)
 
-	// Build report.
+	var allFindings []finding.Finding
+	var allStacks []detect.Stack
+	seenStack := map[string]bool{}
+
+	if *depthFlag > 0 {
+		// Monorepo mode: scan sub-directories.
+		subProjects, err := detect.DetectAll(projectPath, *depthFlag)
+		if err != nil {
+			fmt.Fprintf(stderr, "detection error: %v\n", err)
+			return ExitFailure
+		}
+		for _, sp := range subProjects {
+			spRoot := filepath.Join(projectPath, sp.Path)
+			if sp.Path == "." {
+				spRoot = projectPath
+			}
+			ctx := checks.Context{
+				Root:     spRoot,
+				Stacks:   sp.Stacks,
+				Advanced: *advancedFlag,
+				Config:   cfg,
+			}
+			spFindings := checks.Run(ctx)
+			for i := range spFindings {
+				spFindings[i].SubProject = sp.Path
+			}
+			allFindings = append(allFindings, spFindings...)
+			for _, s := range sp.Stacks {
+				key := s.Language + "|" + sp.Path
+				if !seenStack[key] {
+					seenStack[key] = true
+					allStacks = append(allStacks, s)
+				}
+			}
+		}
+	} else {
+		// Single-project mode.
+		detection, err := detect.Detect(projectPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "detection error: %v\n", err)
+			return ExitFailure
+		}
+		ctx := checks.Context{
+			Root:     projectPath,
+			Stacks:   detection.Stacks,
+			Advanced: *advancedFlag,
+			Config:   cfg,
+		}
+		allFindings = checks.Run(ctx)
+		allStacks = detection.Stacks
+	}
+
+	sum := finding.Summarize(allFindings)
 	rep := output.Report{
-		Version:  Version,
-		Path:     projectPath,
-		Mode:     mode,
-		Stacks:   detection.Stacks,
-		Summary:  sum,
-		Findings: findings,
+		Version:   Version,
+		Path:      projectPath,
+		Mode:      mode,
+		ScanDepth: *depthFlag,
+		Stacks:    allStacks,
+		Summary:   sum,
+		Findings:  allFindings,
 	}
 
-	// Write output.
 	var writeErr error
 	switch format {
 	case "json":
@@ -162,7 +202,6 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		return ExitFailure
 	}
 
-	// Determine exit code.
 	if sum.Fail > 0 {
 		return ExitFailure
 	}
@@ -175,19 +214,20 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 func usageText() string {
 	return strings.TrimSpace(`
 Usage:
-  launchsafe <command> [flags]
+  shipcheck <command> [flags]
 
 Commands:
   check     Run deployment-readiness checks on a project directory
-  version   Print the launchsafe version
+  version   Print the shipcheck version
   help      Show this help message
 
 Flags for 'check':
   --path DIR       Project directory to check (default: current directory)
+  --depth N        Scan subdirectories up to N levels deep (default: 0 = top-level only)
   --advanced       Enable advanced checks (lockfiles, secrets scan, framework config, etc.)
   --strict         Treat warnings as failures; return exit code 1
   --format FORMAT  Output format: text (default), json, sarif
-  --config FILE    Load rules from a .launchsafe.json config file
+  --config FILE    Load rules from a .shipcheck.json config file
 
 Exit codes:
   0  All checks passed (or warnings only, without --strict)
@@ -195,9 +235,10 @@ Exit codes:
   2  Usage error (invalid command, flag, or config)
 
 Examples:
-  launchsafe check
-  launchsafe check --path ./myapp --advanced --format json
-  launchsafe check --advanced --strict --config .launchsafe.json
-  launchsafe version
+  shipcheck check
+  shipcheck check --path ./myapp --advanced --format json
+  shipcheck check --path ./monorepo --depth 3 --advanced
+  shipcheck check --advanced --strict --config .shipcheck.json
+  shipcheck version
 `)
 }

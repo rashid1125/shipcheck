@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/rashid1125/launchsafe/cmd"
+	"github.com/rashid1125/shipcheck/cmd"
 )
 
 func main() {

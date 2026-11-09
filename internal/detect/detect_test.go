@@ -200,3 +200,84 @@ func TestIsBinary(t *testing.T) {
 		t.Error("data with null byte should be binary")
 	}
 }
+
+// ─── DetectAll / monorepo ─────────────────────────────────────────────────────
+
+func TestDetectAll_DemoMonorepo(t *testing.T) {
+	root := makeProject(t, map[string]string{
+		"backend/composer.json": `{"name":"acme/backend","require":{"laravel/framework":"^10"}}`,
+		"backend/artisan":       "#!/usr/bin/env php",
+		"frontend/package.json": `{"dependencies":{"next":"^14","react":"^18"}}`,
+	})
+
+	results, err := DetectAll(root, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected at least one subproject")
+	}
+
+	found := map[string]bool{}
+	for _, sp := range results {
+		for _, s := range sp.Stacks {
+			found[s.Language] = true
+		}
+	}
+	if !found["php"] {
+		t.Error("expected php stack in backend")
+	}
+	if !found["node"] {
+		t.Error("expected node stack in frontend")
+	}
+}
+
+func TestDetectAll_Depth0_RootOnly(t *testing.T) {
+	root := makeProject(t, map[string]string{
+		"go.mod":           "module example.com/app\ngo 1.22\n",
+		"sub/package.json": `{"name":"sub"}`,
+	})
+	results, err := DetectAll(root, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sp := range results {
+		for _, s := range sp.Stacks {
+			if s.Language == "node" {
+				t.Error("depth 0 should not find node stack in sub/")
+			}
+		}
+	}
+}
+
+func TestDetectAll_SkipsNodeModules(t *testing.T) {
+	root := makeProject(t, map[string]string{
+		"node_modules/lib/package.json": `{"name":"lib"}`,
+		"package.json":                  `{"dependencies":{"express":"^4"}}`,
+	})
+	results, err := DetectAll(root, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sp := range results {
+		if sp.Path == "node_modules/lib" {
+			t.Error("should skip node_modules")
+		}
+	}
+}
+
+func TestDetectAll_Sorted(t *testing.T) {
+	root := makeProject(t, map[string]string{
+		"z-service/go.mod": "module example.com/z\ngo 1.22\n",
+		"a-service/go.mod": "module example.com/a\ngo 1.22\n",
+	})
+	results, err := DetectAll(root, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i < len(results); i++ {
+		if results[i].Path < results[i-1].Path {
+			t.Errorf("results not sorted: %s before %s", results[i-1].Path, results[i].Path)
+		}
+	}
+}

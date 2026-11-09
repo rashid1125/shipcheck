@@ -33,6 +33,7 @@ type Finding struct {
 	Message        string `json:"message"`
 	FilePath       string `json:"file_path,omitempty"`
 	Line           int    `json:"line,omitempty"`
+	SubProject     string `json:"sub_project,omitempty"`
 	Recommendation string `json:"recommendation"`
 }
 
