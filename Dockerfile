@@ -1,5 +1,7 @@
-# Multi-stage build — final image has only the binary (no Go toolchain)
 FROM golang:1.22-alpine AS builder
+
+# VERSION passed via --build-arg from CI
+ARG VERSION=dev
 
 WORKDIR /build
 COPY go.mod ./
@@ -7,11 +9,15 @@ RUN go mod download
 
 COPY . .
 RUN go build \
-    -ldflags="-s -w -X github.com/rashid1125/launchsafe/cmd.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)" \
+    -ldflags="-s -w -X github.com/rashid1125/launchsafe/cmd.Version=${VERSION}" \
     -o launchsafe .
 
-# ── final image ──────────────────────────────────────────────────────────────
+# ── final image (no Go toolchain, ~2 MB) ─────────────────────────────────────
 FROM alpine:3.20
+
+LABEL org.opencontainers.image.source="https://github.com/rashid1125/launchsafe"
+LABEL org.opencontainers.image.description="Deployment-readiness CLI — local, read-only project checks before you deploy"
+LABEL org.opencontainers.image.licenses="MIT"
 
 RUN adduser -D -u 1000 launchsafe
 USER launchsafe

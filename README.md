@@ -79,15 +79,26 @@ sha256sum -c checksums.txt
 
 ---
 
-### Option 3 — Docker
+### Option 3 — Docker (GitHub Packages)
+
+The Docker image is published automatically to GitHub Container Registry on every release.
 
 ```bash
+# Pull latest image
+docker pull ghcr.io/rashid1125/launchsafe:latest
+
 # Run against the current directory
-docker run --rm -v "$(pwd):/project" ghcr.io/rashid1125/launchsafe check --path /project
+docker run --rm -v "$(pwd):/project" ghcr.io/rashid1125/launchsafe:latest check --path /project
 
 # Advanced mode
-docker run --rm -v "$(pwd):/project" ghcr.io/rashid1125/launchsafe check --path /project --advanced
+docker run --rm -v "$(pwd):/project" ghcr.io/rashid1125/launchsafe:latest check --path /project --advanced
+
+# Pin to a specific version
+docker pull ghcr.io/rashid1125/launchsafe:0.1.0
 ```
+
+> The image is available on the [GitHub Packages page](https://github.com/rashid1125/launchsafe/pkgs/container/launchsafe).
+> Multi-platform: `linux/amd64` and `linux/arm64`.
 
 ---
 
