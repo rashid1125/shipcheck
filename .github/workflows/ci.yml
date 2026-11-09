@@ -16,12 +16,12 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
-          go-version: "1.22"
+          go-version-file: go.mod
           cache: true
 
       - name: Verify formatting
@@ -43,3 +43,4 @@ jobs:
       - name: Build binary
         run: go build -ldflags="-X github.com/rashid1125/shipcheck/cmd.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)" -o shipcheck-${{ matrix.os }} .
         shell: bash
+
