@@ -201,6 +201,119 @@ Valid SARIF 2.1.0 output with rule metadata and physical locations. Upload to Gi
 - **No Windows path testing.** The CI matrix includes Windows, but cross-platform edge cases in path handling may exist.
 - **No network checks.** LaunchSafe does not verify that environment variables, external services, or DNS entries are correctly configured for production.
 
+## Real-world example — TradingERP (Laravel + Vite + Next.js frontend)
+
+LaunchSafe was tested against a real multi-stack project containing a Laravel backend
+(`TradingERP/`) and a Next.js frontend (`frontend/`).
+
+### Backend — Laravel + Vite (basic mode)
+
+```
+$ launchsafe check --path ./TradingERP
+
+LaunchSafe 0.1.0 — Deployment Readiness Check
+Path: /var/www/PHP-Project/TradingERP
+Mode: basic
+
+Detected stacks:
+  • node (vite) [package.json]
+  • php (laravel) [composer.json]
+
+Findings:
+  ✓ PASS   [MANIFEST_PRESENT        ] Project manifest found: node, php
+  ✓ PASS   [MANIFEST_READABLE       ] package.json is valid JSON.
+  ✓ PASS   [MANIFEST_READABLE       ] composer.json is valid JSON.
+  ⚠ WARN   [START_COMMAND           ] No `scripts.start` found in package.json.
+             → Add a `start` script to package.json or add a Procfile.
+  ✓ PASS   [ENV_TEMPLATE            ] Environment template found: .env.example
+  ✓ PASS   [GITIGNORE_ENV           ] .env is covered by .gitignore.
+  ✓ PASS   [DOCKERFILE_PRESENT      ] Dockerfile found: Dockerfile
+  ✓ PASS   [CI_PRESENT              ] CI configuration found: azure-pipelines.yml
+
+Summary: 7 passed, 1 warnings, 0 failed
+```
+
+### Backend — Laravel + Vite (advanced mode — notable findings)
+
+```
+$ launchsafe check --path ./TradingERP --advanced
+
+  ⚠ WARN   [DOCKERFILE_BASIC        ] Dockerfile does not contain an EXPOSE instruction.
+             → Add an EXPOSE instruction to document the port your container listens on.
+  ⚠ WARN   [DOCKERFILE_BASIC        ] Dockerfile does not set a non-root USER.
+             → Add a USER instruction to run the container as a non-root user.
+  ✓ PASS   [FRAMEWORK_CONFIG        ] Laravel .env.example contains APP_KEY entry.
+  ✗ FAIL   [HARDCODED_SECRETS       ] HEURISTIC: Possible hard-coded credential pattern detected.
+                                       [storage/oauth-private.key:1]
+  ✗ FAIL   [HARDCODED_SECRETS       ] HEURISTIC: Possible hard-coded credential pattern detected.
+                                       [resources/js/firebase-init.js:10]
+  ✗ FAIL   [HARDCODED_SECRETS       ] HEURISTIC: Possible hard-coded credential pattern detected.
+                                       [app/Http/Controllers/Developer/AuthController.php:96]
+  ...
+
+Summary: 11 passed, 4 warnings, 34 failed
+```
+
+> **Note:** `storage/oauth-private.key` is a real OAuth private key committed to the repo —
+> this should be removed and regenerated. `firebase-init.js` may contain a Firebase API key
+> that should be moved to an environment variable. Test files flagged are likely false positives
+> using dummy credentials; add `HARDCODED_SECRETS` to `disabled_rules` or fix per file.
+
+### Frontend — Next.js (basic mode — clean pass)
+
+```
+$ launchsafe check --path ./frontend
+
+LaunchSafe 0.1.0 — Deployment Readiness Check
+Path: /var/www/PHP-Project/frontend
+Mode: basic
+
+Detected stacks:
+  • node (nextjs) [package.json]
+
+Findings:
+  ✓ PASS   [MANIFEST_PRESENT        ] Project manifest found: node
+  ✓ PASS   [MANIFEST_READABLE       ] package.json is valid JSON.
+  ✓ PASS   [START_COMMAND           ] Node.js start script found: next start
+  ✓ PASS   [ENV_TEMPLATE            ] Environment template found: .env.example
+  ✓ PASS   [GITIGNORE_ENV           ] .env is covered by .gitignore.
+  ✓ PASS   [DOCKERFILE_PRESENT      ] Dockerfile found: Dockerfile
+  ✓ PASS   [CI_PRESENT              ] CI configuration found: azure-pipelines.yml
+
+Summary: 7 passed, 0 warnings, 0 failed
+```
+
+### Frontend — Next.js (advanced mode — secrets scan flagged issues)
+
+```
+$ launchsafe check --path ./frontend --advanced
+
+  ✓ PASS   [LOCKFILE_PRESENT        ] Dependency lockfile found: package-lock.json
+  ✓ PASS   [DOCKER_COMPOSE_PRESENT  ] Docker Compose file found: docker-compose.yml
+  ✓ PASS   [DOCKERFILE_BASIC        ] Dockerfile passes basic checks.
+  ✓ PASS   [FRAMEWORK_CONFIG        ] Next.js configuration file found.
+  ✗ FAIL   [HARDCODED_SECRETS       ] HEURISTIC: Possible hard-coded credential pattern detected.
+                                       [lib/config.js:28]
+  ✗ FAIL   [HARDCODED_SECRETS       ] HEURISTIC: Possible hard-coded credential pattern detected.
+                                       [lib/reverb.js:21]
+  ✗ FAIL   [HARDCODED_SECRETS       ] HEURISTIC: Possible hard-coded credential pattern detected.
+                                       [hooks/useBrowserPush.js:78]
+  ...
+
+Summary: 12 passed, 1 warnings, 24 failed
+```
+
+> **Note:** `lib/config.js` and `lib/reverb.js` contain token-like assignments worth reviewing.
+> `hooks/useBrowserPush.js` may contain a Web Push public key (VAPID key) — these are
+> intentionally public-facing but still flagged by the heuristic scanner. Review each flagged
+> file; use `.launchsafe.json` to suppress confirmed false positives.
+
+### Multi-stack detection in action
+
+Both projects demonstrate that LaunchSafe correctly handles repositories with more than one
+manifest (`node` + `php` in TradingERP) and reports all detected stacks in a deterministic,
+sorted order.
+
 ## Development
 
 ```bash

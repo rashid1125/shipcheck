@@ -128,6 +128,11 @@ func scanForSecrets(root string) ([]finding.Finding, error) {
 			return nil
 		}
 
+		// Skip symlinks — they may point to directories or external mounts.
+		if d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+
 		// Skip .env* files — they legitimately contain secrets.
 		if strings.HasPrefix(name, ".env") {
 			return nil
@@ -155,6 +160,11 @@ func scanForSecrets(root string) ([]finding.Finding, error) {
 		}
 		defer f.Close()
 
+		// Guard against symlinks-to-directories or other non-regular files.
+		if stat, err := f.Stat(); err != nil || !stat.Mode().IsRegular() {
+			return nil
+		}
+
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			rel = path
@@ -162,6 +172,8 @@ func scanForSecrets(root string) ([]finding.Finding, error) {
 
 		lineNum := 0
 		scanner := bufio.NewScanner(f)
+		// Increase buffer to handle minified files with very long lines.
+		scanner.Buffer(make([]byte, 256*1024), 256*1024)
 		isBinaryChecked := false
 		for scanner.Scan() {
 			lineNum++
