@@ -1,0 +1,8 @@
+/vendor/
+.env
+.env.*
+!.env.example
+/storage/*.key
+Homestead.json
+Homestead.yaml
+.phpunit.result.cache

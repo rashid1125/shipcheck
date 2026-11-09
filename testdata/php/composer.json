@@ -1,0 +1,10 @@
+{
+  "name": "my-laravel-app",
+  "require": {
+    "php": "^8.2",
+    "laravel/framework": "^10.0"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^10.0"
+  }
+}
