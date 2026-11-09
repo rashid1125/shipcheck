@@ -30,22 +30,94 @@ Summary: 8 passed, 3 warnings, 1 failed
 - **Heuristics are labelled.** Any check that uses pattern matching is clearly labelled as heuristic, with its limitations documented.
 - **Missing files are warnings, not failures.** A missing Dockerfile or CI config is a warning because these are optional for many deployment setups.
 
-## Install / build
+## Install
 
-**Requirements:** Go 1.22+
+### Option 1 — `go install` (easiest for Go developers)
+
+```bash
+go install github.com/rashid1125/launchsafe@latest
+launchsafe version
+```
+
+> Requires Go 1.22+. The binary lands in `$(go env GOPATH)/bin` (usually `~/go/bin`).
+
+---
+
+### Option 2 — Download pre-built binary (no Go needed)
+
+Go to the [Releases page](https://github.com/rashid1125/launchsafe/releases) and download
+the binary for your platform:
+
+| Platform | File |
+|----------|------|
+| Linux (Intel/AMD 64-bit) | `launchsafe-linux-amd64` |
+| Linux (ARM64 / Graviton) | `launchsafe-linux-arm64` |
+| macOS (Intel) | `launchsafe-darwin-amd64` |
+| macOS (Apple Silicon M1/M2) | `launchsafe-darwin-arm64` |
+| Windows (64-bit) | `launchsafe-windows-amd64.exe` |
+
+```bash
+# Linux / macOS
+chmod +x launchsafe-linux-amd64
+sudo mv launchsafe-linux-amd64 /usr/local/bin/launchsafe
+launchsafe version
+
+# Windows — rename to launchsafe.exe and add to PATH
+```
+
+**One-liner install script (Linux / macOS):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rashid1125/launchsafe/main/install.sh | bash
+```
+
+**Verify checksum** (recommended):
+
+```bash
+sha256sum -c checksums.txt
+```
+
+---
+
+### Option 3 — Docker
+
+```bash
+# Run against the current directory
+docker run --rm -v "$(pwd):/project" ghcr.io/rashid1125/launchsafe check --path /project
+
+# Advanced mode
+docker run --rm -v "$(pwd):/project" ghcr.io/rashid1125/launchsafe check --path /project --advanced
+```
+
+---
+
+### Option 4 — Build from source
 
 ```bash
 git clone https://github.com/rashid1125/launchsafe.git
 cd launchsafe
-go build -o launchsafe .
-./launchsafe version
+make build          # builds ./launchsafe
+make install        # installs to ~/go/bin
+make cross          # builds all platforms into ./dist/
 ```
 
-To embed the version at build time:
+Or without Make:
 
 ```bash
 go build -ldflags="-X github.com/rashid1125/launchsafe/cmd.Version=0.1.0" -o launchsafe .
 ```
+
+---
+
+## Releasing a new version
+
+1. Push all changes to `main`
+2. Create and push a version tag:
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+3. GitHub Actions automatically builds binaries for all platforms and publishes a GitHub Release.
 
 ## Usage
 

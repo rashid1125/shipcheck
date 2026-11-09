@@ -1,0 +1,91 @@
+name: Release
+
+# Triggered when a version tag like v0.1.0 is pushed.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # needed to create GitHub Releases and upload assets
+
+jobs:
+  release:
+    name: Build & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so `git describe` works
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Set version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Build all platforms
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          LDFLAGS: -s -w -X github.com/rashid1125/launchsafe/cmd.Version=${{ steps.version.outputs.VERSION }}
+        run: |
+          mkdir -p dist
+
+          # Linux amd64
+          GOOS=linux   GOARCH=amd64  go build -ldflags="$LDFLAGS" -o dist/launchsafe-linux-amd64       .
+          # Linux arm64 (Raspberry Pi, AWS Graviton, etc.)
+          GOOS=linux   GOARCH=arm64  go build -ldflags="$LDFLAGS" -o dist/launchsafe-linux-arm64       .
+          # macOS Intel
+          GOOS=darwin  GOARCH=amd64  go build -ldflags="$LDFLAGS" -o dist/launchsafe-darwin-amd64      .
+          # macOS Apple Silicon
+          GOOS=darwin  GOARCH=arm64  go build -ldflags="$LDFLAGS" -o dist/launchsafe-darwin-arm64      .
+          # Windows
+          GOOS=windows GOARCH=amd64  go build -ldflags="$LDFLAGS" -o dist/launchsafe-windows-amd64.exe .
+
+      - name: Create checksums
+        working-directory: dist
+        run: sha256sum * > checksums.txt && cat checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: LaunchSafe ${{ steps.version.outputs.VERSION }}
+          body: |
+            ## Install
+
+            **Go install (requires Go 1.22+):**
+            ```bash
+            go install github.com/rashid1125/launchsafe@${{ steps.version.outputs.VERSION }}
+            ```
+
+            **Download binary:**
+            Pick the file for your platform from the assets below, then:
+            ```bash
+            # Linux / macOS
+            chmod +x launchsafe-*
+            mv launchsafe-* /usr/local/bin/launchsafe
+            launchsafe version
+            ```
+
+            **Verify checksum:**
+            ```bash
+            sha256sum -c checksums.txt
+            ```
+          files: |
+            dist/launchsafe-linux-amd64
+            dist/launchsafe-linux-arm64
+            dist/launchsafe-darwin-amd64
+            dist/launchsafe-darwin-arm64
+            dist/launchsafe-windows-amd64.exe
+            dist/checksums.txt
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
